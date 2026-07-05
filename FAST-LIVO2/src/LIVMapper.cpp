@@ -390,6 +390,11 @@ void LIVMapper::processImu()
 
 void LIVMapper::stateEstimationAndMapping() 
 {
+#ifdef LIVO_BENCH_EN
+  mtx_buffer.lock();
+  printf("BUFFER_SIZES lidar=%zu imu=%zu img=%zu\n", lid_raw_data_buffer.size(), imu_buffer.size(), img_buffer.size());
+  mtx_buffer.unlock();
+#endif
   switch (LidarMeasures.lio_vio_flg) 
   {
     case VIO:
@@ -448,8 +453,14 @@ void LIVMapper::handleVIO()
   //   visual_sub_map->push_back(temp_map);
   // }
 
+#ifdef LIVO_BENCH_EN
+  double t_pub_start = omp_get_wtime();
+#endif
   publish_frame_world(pubLaserCloudFullRes, vio_manager);
   publish_img_rgb(pubImage, vio_manager);
+#ifdef LIVO_BENCH_EN
+  printf("| %-29s | %-27f |\n", "publish_frame_world (VIO)", omp_get_wtime() - t_pub_start);
+#endif
 
   euler_cur = RotMtoEuler(_state.rot_end);
   fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
@@ -566,7 +577,13 @@ void LIVMapper::handleLIO()
   }
   *pcl_w_wait_pub = *laserCloudWorld;
 
+#ifdef LIVO_BENCH_EN
+  double t_pub_lio_start = omp_get_wtime();
+#endif
   if (!img_en) publish_frame_world(pubLaserCloudFullRes, vio_manager);
+#ifdef LIVO_BENCH_EN
+  printf("| %-29s | %-27f |\n", "publish_frame_world (LIO)", omp_get_wtime() - t_pub_lio_start);
+#endif
   if (pub_effect_point_en) publish_effect_world(pubLaserCloudEffect, voxelmap_manager->ptpl_list_);
   if (voxelmap_manager->config_setting_.is_pub_plane_map_) voxelmap_manager->pubVoxelMap();
   publish_path(pubPath);

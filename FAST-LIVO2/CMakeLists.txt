@@ -51,6 +51,9 @@ include(ProcessorCount)
 ProcessorCount(N)
 message(STATUS "Processor count: ${N}")
 
+# Enable benchmark logging (buffer sizes + publish timing). Comment out to silence.
+add_definitions(-DLIVO_BENCH_EN)
+
 # Set the number of cores for multithreading
 if(N GREATER 4)
   math(EXPR PROC_NUM "4")
