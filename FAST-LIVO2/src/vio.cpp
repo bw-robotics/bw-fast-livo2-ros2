@@ -1791,8 +1791,11 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
     if (img.empty()) printf("[ VIO ] Empty Image!\n");
     cv::resize(img, img, cv::Size(img.cols * image_resize_factor, img.rows * image_resize_factor), 0, 0, CV_INTER_LINEAR);
   }
-  img_rgb = img.clone();
-  img_cp = img.clone();
+  if (!odometry_only)
+  {
+    img_rgb = img.clone();
+    img_cp = img.clone();
+  }
   // img_test = img.clone();
 
   if (img.channels() == 3) cv::cvtColor(img, img, CV_BGR2GRAY);
@@ -1816,9 +1819,9 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
 
   double t4 = omp_get_wtime();
   
-  plotTrackedPoints();
+  if (!odometry_only) plotTrackedPoints();
 
-  if (plot_flag) projectPatchFromRefToCur(feat_map);
+  if (!odometry_only && plot_flag) projectPatchFromRefToCur(feat_map);
 
   double t5 = omp_get_wtime();
 
@@ -1830,7 +1833,7 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
 
   double t7 = omp_get_wtime();
   
-  if(colmap_output_en)  dumpDataForColmap();
+  if(colmap_output_en && !odometry_only)  dumpDataForColmap();
 
   frame_count++;
   ave_total = ave_total * (frame_count - 1) / frame_count + (t7 - t1 - (t5 - t4)) / frame_count;

@@ -118,6 +118,7 @@ public:
 
   int frame_count = 0;
   bool plot_flag;
+  bool odometry_only = false;
 
   Eigen::Matrix<double, DIM_STATE, DIM_STATE> G, H_T_H;
   Eigen::MatrixXd K, H_sub_inv;

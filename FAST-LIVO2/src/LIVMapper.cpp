@@ -73,6 +73,9 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   try_declare.template operator()<int>("common.img_en", 1);
   try_declare.template operator()<int>("common.lidar_en", 1);
   try_declare.template operator()<std::string>("common.img_topic", "/left_camera/image");
+  try_declare.template operator()<double>("common.img_min_interval_sec", 0.033);
+  try_declare.template operator()<int>("common.img_buffer_max_size", 2);
+  try_declare.template operator()<bool>("common.odometry_only", false);
 
   try_declare.template operator()<bool>("vio.normal_en", true);
   try_declare.template operator()<bool>("vio.inverse_composition_en", false);
@@ -131,6 +134,9 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("common.img_en", img_en);
   this->node->get_parameter("common.lidar_en", lidar_en);
   this->node->get_parameter("common.img_topic", img_topic);
+  this->node->get_parameter("common.img_min_interval_sec", img_min_interval_);
+  this->node->get_parameter("common.img_buffer_max_size", img_buffer_max_size_);
+  this->node->get_parameter("common.odometry_only", odometry_only_);
 
   this->node->get_parameter("vio.normal_en", normal_en);
   this->node->get_parameter("vio.inverse_composition_en", inverse_composition_en);
@@ -219,6 +225,7 @@ void LIVMapper::initializeComponents(rclcpp::Node::SharedPtr &node)
   vio_manager->patch_pyrimid_level = patch_pyrimid_level;
   vio_manager->exposure_estimate_en = exposure_estimate_en;
   vio_manager->colmap_output_en = colmap_output_en;
+  vio_manager->odometry_only = odometry_only_;
   vio_manager->initializeVIO();
 
   p_imu->set_extrinsic(extT, extR);
@@ -410,11 +417,14 @@ void LIVMapper::stateEstimationAndMapping()
 void LIVMapper::handleVIO() 
 {
   euler_cur = RotMtoEuler(_state.rot_end);
-  fout_pre << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
-            << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
-            << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << std::endl;
+  if (!odometry_only_)
+  {
+    fout_pre << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
+              << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
+              << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << std::endl;
+  }
     
-  if (pcl_w_wait_pub->empty() || (pcl_w_wait_pub == nullptr)) 
+  if (!odometry_only_ && (pcl_w_wait_pub->empty() || pcl_w_wait_pub == nullptr)) 
   {
     std::cout << "[ VIO ] No point!!!" << std::endl;
     return;
@@ -456,24 +466,30 @@ void LIVMapper::handleVIO()
 #ifdef LIVO_BENCH_EN
   double t_pub_start = omp_get_wtime();
 #endif
-  publish_frame_world(pubLaserCloudFullRes, vio_manager);
-  publish_img_rgb(pubImage, vio_manager);
+  if (!odometry_only_) publish_frame_world(pubLaserCloudFullRes, vio_manager);
+  if (!odometry_only_) publish_img_rgb(pubImage, vio_manager);
 #ifdef LIVO_BENCH_EN
   printf("| %-29s | %-27f |\n", "publish_frame_world (VIO)", omp_get_wtime() - t_pub_start);
 #endif
 
   euler_cur = RotMtoEuler(_state.rot_end);
-  fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
-            << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
-            << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
+  if (!odometry_only_)
+  {
+    fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
+              << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
+              << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
+  }
 }
 
 void LIVMapper::handleLIO() 
 {    
   euler_cur = RotMtoEuler(_state.rot_end);
-  fout_pre << setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
-           << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
-           << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << endl;
+  if (!odometry_only_)
+  {
+    fout_pre << setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
+             << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
+             << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << endl;
+  }
            
   if (feats_undistort->empty() || (feats_undistort == nullptr)) 
   {
@@ -567,20 +583,23 @@ void LIVMapper::handleLIO()
     voxelmap_manager->mapSliding();
   }
   
-  PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
-  int size = laserCloudFullRes->points.size();
-  PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
-
-  for (int i = 0; i < size; i++) 
+  if (!odometry_only_)
   {
-    RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
+    PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? feats_undistort : feats_down_body);
+    int size = laserCloudFullRes->points.size();
+    PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
+
+    for (int i = 0; i < size; i++) 
+    {
+      RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
+    }
+    *pcl_w_wait_pub = *laserCloudWorld;
   }
-  *pcl_w_wait_pub = *laserCloudWorld;
 
 #ifdef LIVO_BENCH_EN
   double t_pub_lio_start = omp_get_wtime();
 #endif
-  if (!img_en) publish_frame_world(pubLaserCloudFullRes, vio_manager);
+  if (!img_en && !odometry_only_) publish_frame_world(pubLaserCloudFullRes, vio_manager);
 #ifdef LIVO_BENCH_EN
   printf("| %-29s | %-27f |\n", "publish_frame_world (LIO)", omp_get_wtime() - t_pub_lio_start);
 #endif
@@ -617,9 +636,12 @@ void LIVMapper::handleLIO()
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
 
   euler_cur = RotMtoEuler(_state.rot_end);
-  fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
-            << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
-            << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
+  if (!odometry_only_)
+  {
+    fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
+              << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
+              << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
+  }
 }
 
 void LIVMapper::savePCD() 
@@ -1004,12 +1026,18 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
 
   double img_time_correct = msg_header_time; // last_timestamp_lidar + 0.105;
 
-  if (img_time_correct - last_timestamp_img < 0.02)
+  if (img_time_correct - last_timestamp_img < img_min_interval_)
   {
     RCLCPP_WARN(this->node->get_logger(), "Image need Jumps: %.6f", img_time_correct);
     mtx_buffer.unlock();
     sig_buffer.notify_all();
     return;
+  }
+
+  while (img_buffer.size() >= static_cast<size_t>(img_buffer_max_size_))
+  {
+    img_buffer.pop_front();
+    img_time_buffer.pop_front();
   }
 
   cv::Mat img_cur = getImageFromMsg(msg);

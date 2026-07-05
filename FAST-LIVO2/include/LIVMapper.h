@@ -127,6 +127,9 @@ public:
   double plot_time;
   int frame_cnt;
   double img_time_offset = 0.0;
+  double img_min_interval_ = 0.033;
+  int img_buffer_max_size_ = 2;
+  bool odometry_only_ = false;
   deque<PointCloudXYZI::Ptr> lid_raw_data_buffer;
   deque<double> lid_header_time_buffer;
   deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer;
