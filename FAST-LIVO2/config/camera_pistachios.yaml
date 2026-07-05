@@ -1,0 +1,17 @@
+/**:
+  ros__parameters:
+    camera:
+      model: Pinhole
+      width: 1920
+      height: 1080
+      scale: 1.0
+      fx: 868.95059
+      fy: 870.77182
+      cx: 916.95434
+      cy: 499.48388
+      d0: -0.00894
+      d1: -0.056799
+      d2: 0.064274
+      d3: -0.028072
+
+
