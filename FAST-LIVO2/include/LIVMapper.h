@@ -131,6 +131,11 @@ public:
   double img_time_offset = 0.0;
   double img_min_interval_ = 0.033;
   int img_buffer_max_size_ = 2;
+  int lidar_buffer_max_size_ = 0;                    // 0 = unbounded (disabled); >0 = drop-oldest-to-latest
+  int lidar_qos_depth_ = 200000;                     // ROS subscription queue depth for lidar
+  int imu_qos_depth_ = 200000;                       // ROS subscription queue depth for imu (kept deep)
+  int image_qos_depth_ = 200000;                     // ROS subscription queue depth for images
+  std::string image_qos_reliability_ = "reliable";   // "reliable" | "best_effort"
   bool odometry_only_ = false;
   deque<PointCloudXYZI::Ptr> lid_raw_data_buffer;
   deque<double> lid_header_time_buffer;

@@ -75,6 +75,11 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   try_declare.template operator()<std::string>("common.img_topic", "/left_camera/image");
   try_declare.template operator()<double>("common.img_min_interval_sec", 0.033);
   try_declare.template operator()<int>("common.img_buffer_max_size", 2);
+  try_declare.template operator()<int>("common.lidar_buffer_max_size", 0);
+  try_declare.template operator()<int>("common.lidar_qos_depth", 200000);
+  try_declare.template operator()<int>("common.imu_qos_depth", 200000);
+  try_declare.template operator()<int>("common.image_qos_depth", 200000);
+  try_declare.template operator()<std::string>("common.image_qos_reliability", "reliable");
   try_declare.template operator()<bool>("common.odometry_only", false);
 
   try_declare.template operator()<bool>("vio.normal_en", true);
@@ -136,6 +141,11 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("common.img_topic", img_topic);
   this->node->get_parameter("common.img_min_interval_sec", img_min_interval_);
   this->node->get_parameter("common.img_buffer_max_size", img_buffer_max_size_);
+  this->node->get_parameter("common.lidar_buffer_max_size", lidar_buffer_max_size_);
+  this->node->get_parameter("common.lidar_qos_depth", lidar_qos_depth_);
+  this->node->get_parameter("common.imu_qos_depth", imu_qos_depth_);
+  this->node->get_parameter("common.image_qos_depth", image_qos_depth_);
+  this->node->get_parameter("common.image_qos_reliability", image_qos_reliability_);
   this->node->get_parameter("common.odometry_only", odometry_only_);
 
   this->node->get_parameter("vio.normal_en", normal_en);
@@ -279,22 +289,29 @@ void LIVMapper::initializeSubscribersAndPublishers(rclcpp::Node::SharedPtr &node
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this->node);
   
-  // Use BEST_EFFORT QoS for LiDAR and IMU to match bag file QoS settings
-  rclcpp::QoS qos_sensor(200000);
-  qos_sensor.reliability(rclcpp::ReliabilityPolicy::BestEffort);
-  qos_sensor.durability(rclcpp::DurabilityPolicy::Volatile);
-  
-  // Use RELIABLE QoS for images (matches image relay output)
-  rclcpp::QoS qos_image(200000);
-  qos_image.reliability(rclcpp::ReliabilityPolicy::Reliable);
+  // BEST_EFFORT QoS for LiDAR and IMU (matches bag QoS); depths split so the QoS lever
+  // can shrink the lidar queue without ever starving IMU.
+  rclcpp::QoS qos_lidar(static_cast<size_t>(lidar_qos_depth_));
+  qos_lidar.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+  qos_lidar.durability(rclcpp::DurabilityPolicy::Volatile);
+
+  rclcpp::QoS qos_imu(static_cast<size_t>(imu_qos_depth_));
+  qos_imu.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+  qos_imu.durability(rclcpp::DurabilityPolicy::Volatile);
+
+  // Image reliability configurable; best_effort drops stale frames at the transport layer.
+  rclcpp::QoS qos_image(static_cast<size_t>(image_qos_depth_));
+  qos_image.reliability(image_qos_reliability_ == "best_effort"
+                          ? rclcpp::ReliabilityPolicy::BestEffort
+                          : rclcpp::ReliabilityPolicy::Reliable);
   qos_image.durability(rclcpp::DurabilityPolicy::Volatile);
-  
+
   if (p_pre->lidar_type == AVIA) {
-    sub_pcl = this->node->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, qos_sensor, std::bind(&LIVMapper::livox_pcl_cbk, this, std::placeholders::_1));
+    sub_pcl = this->node->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, qos_lidar, std::bind(&LIVMapper::livox_pcl_cbk, this, std::placeholders::_1));
   } else {
-    sub_pcl = this->node->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, qos_sensor, std::bind(&LIVMapper::standard_pcl_cbk, this, std::placeholders::_1));
+    sub_pcl = this->node->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, qos_lidar, std::bind(&LIVMapper::standard_pcl_cbk, this, std::placeholders::_1));
   }
-  sub_imu = this->node->create_subscription<sensor_msgs::msg::Imu>(imu_topic, qos_sensor, std::bind(&LIVMapper::imu_cbk, this, std::placeholders::_1));
+  sub_imu = this->node->create_subscription<sensor_msgs::msg::Imu>(imu_topic, qos_imu, std::bind(&LIVMapper::imu_cbk, this, std::placeholders::_1));
   sub_img = this->node->create_subscription<sensor_msgs::msg::Image>(img_topic, qos_image, std::bind(&LIVMapper::img_cbk, this, std::placeholders::_1));
   
   pubLaserCloudFullRes = this->node->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 100);
@@ -893,6 +910,14 @@ void LIVMapper::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstShare
   // ROS_INFO("get point cloud at time: %.6f", stamp2Sec(msg->header.stamp));
   PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
   p_pre->process(msg, ptr);
+  if (lidar_buffer_max_size_ > 0)
+  {
+    while (lid_raw_data_buffer.size() >= static_cast<size_t>(lidar_buffer_max_size_))
+    {
+      lid_raw_data_buffer.pop_front();
+      lid_header_time_buffer.pop_front();
+    }
+  }
   lid_raw_data_buffer.push_back(ptr);
   lid_header_time_buffer.push_back(stamp2Sec(msg->header.stamp));
   last_timestamp_lidar = stamp2Sec(msg->header.stamp);
@@ -936,6 +961,14 @@ void LIVMapper::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstShar
     return;
   }
 
+  if (lidar_buffer_max_size_ > 0)
+  {
+    while (lid_raw_data_buffer.size() >= static_cast<size_t>(lidar_buffer_max_size_))
+    {
+      lid_raw_data_buffer.pop_front();
+      lid_header_time_buffer.pop_front();
+    }
+  }
   lid_raw_data_buffer.push_back(ptr);
   lid_header_time_buffer.push_back(cur_head_time);
   last_timestamp_lidar = cur_head_time;
