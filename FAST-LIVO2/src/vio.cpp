@@ -1870,7 +1870,13 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Current Total Time", t7 - t1 - (t5 - t4));
   printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Average Total Time", ave_total);
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-
+#ifdef LIVO_BENCH_EN
+  last_retrieve_ms_     = (t2 - t1) * 1000.0;
+  last_jacobian_ekf_ms_ = (t3 - t2) * 1000.0;
+  last_gen_map_ms_      = (t4 - t3) * 1000.0;
+  last_upd_map_ms_      = (t6 - t5) * 1000.0;
+  last_upd_ref_ms_      = (t7 - t6) * 1000.0;
+#endif
   // std::string text = std::to_string(int(1 / (t7 - t1 - (t5 - t4)))) + " HZ";
   // cv::Point2f origin;
   // origin.x = 20;

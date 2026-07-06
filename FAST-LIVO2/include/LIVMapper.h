@@ -14,6 +14,8 @@ which is included as part of this source code package.
 #define LIV_MAPPER_H
 
 #include "IMU_Processing.h"
+#include <map>
+#include <string>
 #include "vio.h"
 #include "preprocess.h"
 #ifdef PRE_ROS_IRON
@@ -198,6 +200,8 @@ public:
   bool static_transform_published_ = false;
 
   int frame_num = 0;
+  long bench_cycle_id_ = 0;
+  std::map<std::string, double> bench_stage_ms_;
   double aver_time_consu = 0;
   double aver_time_icp = 0;
   double aver_time_map_inre = 0;

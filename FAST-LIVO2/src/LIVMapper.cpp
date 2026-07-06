@@ -395,23 +395,38 @@ void LIVMapper::processImu()
   // std::cout << "[ Mapping ] predict sta: " << state_propagat.pos_end.transpose() << state_propagat.vel_end.transpose() << std::endl;
 }
 
-void LIVMapper::stateEstimationAndMapping() 
+void LIVMapper::stateEstimationAndMapping()
 {
 #ifdef LIVO_BENCH_EN
+  bench_cycle_id_++;
+  bench_stage_ms_.clear();
+  const char *bench_mode = (LidarMeasures.lio_vio_flg == VIO) ? "VIO" : "LIO";
+  size_t bl, bi, bg;
   mtx_buffer.lock();
-  printf("BUFFER_SIZES lidar=%zu imu=%zu img=%zu\n", lid_raw_data_buffer.size(), imu_buffer.size(), img_buffer.size());
+  bl = lid_raw_data_buffer.size(); bi = imu_buffer.size(); bg = img_buffer.size();
   mtx_buffer.unlock();
+  double bench_wall_start = omp_get_wtime();
 #endif
-  switch (LidarMeasures.lio_vio_flg) 
+  switch (LidarMeasures.lio_vio_flg)
   {
-    case VIO:
-      handleVIO();
-      break;
+    case VIO: handleVIO(); break;
     case LIO:
-    case LO:
-      handleLIO();
-      break;
+    case LO:  handleLIO(); break;
   }
+#ifdef LIVO_BENCH_EN
+  double wall_ms = (omp_get_wtime() - bench_wall_start) * 1000.0;
+  const char *bench_status = bench_stage_ms_.empty() ? "skipped" : "ok";
+  std::string stages;
+  for (auto &kv : bench_stage_ms_)
+  {
+    if (!stages.empty()) stages += ",";
+    char buf[64]; snprintf(buf, sizeof(buf), "%s:%.3f", kv.first.c_str(), kv.second);
+    stages += buf;
+  }
+  printf("LIVO_CYCLE id=%ld mode=%s status=%s stamp=%.6f wall_ms=%.3f buf_lidar=%zu buf_imu=%zu buf_img=%zu stages_ms=%s\n",
+         bench_cycle_id_, bench_mode, bench_status, LidarMeasures.last_lio_update_time,
+         wall_ms, bl, bi, bg, stages.c_str());
+#endif
 }
 
 void LIVMapper::handleVIO() 
@@ -469,7 +484,14 @@ void LIVMapper::handleVIO()
   if (!odometry_only_) publish_frame_world(pubLaserCloudFullRes, vio_manager);
   if (!odometry_only_) publish_img_rgb(pubImage, vio_manager);
 #ifdef LIVO_BENCH_EN
-  printf("| %-29s | %-27f |\n", "publish_frame_world (VIO)", omp_get_wtime() - t_pub_start);
+  double t_pub_end = omp_get_wtime();
+  printf("| %-29s | %-27f |\n", "publish_frame_world (VIO)", t_pub_end - t_pub_start);
+  bench_stage_ms_["retrieve"]     = vio_manager->last_retrieve_ms_;
+  bench_stage_ms_["jacobian_ekf"] = vio_manager->last_jacobian_ekf_ms_;
+  bench_stage_ms_["gen_map"]      = vio_manager->last_gen_map_ms_;
+  bench_stage_ms_["upd_map"]      = vio_manager->last_upd_map_ms_;
+  bench_stage_ms_["upd_ref"]      = vio_manager->last_upd_ref_ms_;
+  bench_stage_ms_["publish"]      = (t_pub_end - t_pub_start) * 1000.0;
 #endif
 
   euler_cur = RotMtoEuler(_state.rot_end);
@@ -601,7 +623,13 @@ void LIVMapper::handleLIO()
 #endif
   if (!img_en && !odometry_only_) publish_frame_world(pubLaserCloudFullRes, vio_manager);
 #ifdef LIVO_BENCH_EN
-  printf("| %-29s | %-27f |\n", "publish_frame_world (LIO)", omp_get_wtime() - t_pub_lio_start);
+  double t_pub_lio_end = omp_get_wtime();
+  printf("| %-29s | %-27f |\n", "publish_frame_world (LIO)", t_pub_lio_end - t_pub_lio_start);
+  bench_stage_ms_["downsample"]   = (t_down - t0) * 1000.0;
+  bench_stage_ms_["icp"]          = (t2 - t1) * 1000.0;
+  bench_stage_ms_["update_voxel"] = (t4 - t3) * 1000.0;
+  bench_stage_ms_["prep_cloud"]   = (t_pub_lio_start - t4) * 1000.0;
+  bench_stage_ms_["publish"]      = (t_pub_lio_end - t_pub_lio_start) * 1000.0;
 #endif
   if (pub_effect_point_en) publish_effect_world(pubLaserCloudEffect, voxelmap_manager->ptpl_list_);
   if (voxelmap_manager->config_setting_.is_pub_plane_map_) voxelmap_manager->pubVoxelMap();

@@ -113,6 +113,11 @@ public:
 
   double compute_jacobian_time, update_ekf_time;
   double ave_total = 0;
+  double last_retrieve_ms_ = 0.0;
+  double last_jacobian_ekf_ms_ = 0.0;
+  double last_gen_map_ms_ = 0.0;
+  double last_upd_map_ms_ = 0.0;
+  double last_upd_ref_ms_ = 0.0;
   // double ave_build_residual_time = 0;
   // double ave_ekf_time = 0;
 
