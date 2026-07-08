@@ -425,13 +425,17 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 
     // build_residual_time += omp_get_wtime() - t1;
 
-    for (int i = 0; i < ptpl_list_.size(); i++)
-    {
-      total_residual += fabs(ptpl_list_[i].dis_to_plane_);
-    }
     effct_feat_num_ = ptpl_list_.size();
-    cout << "[ LIO ] Raw feature num: " << feats_undistort_->size() << ", downsampled feature num:" << feats_down_size_ 
-         << " effective feature num: " << effct_feat_num_ << " average residual: " << total_residual / effct_feat_num_ << endl;
+    if (verbose_logging_)
+    {
+      for (int i = 0; i < ptpl_list_.size(); i++)
+      {
+        total_residual += fabs(ptpl_list_[i].dis_to_plane_);
+      }
+      const double average_residual = effct_feat_num_ > 0 ? total_residual / effct_feat_num_ : 0.0;
+      cout << "[ LIO ] Raw feature num: " << feats_undistort_->size() << ", downsampled feature num:" << feats_down_size_ 
+           << " effective feature num: " << effct_feat_num_ << " average residual: " << average_residual << endl;
+    }
 
     /*** Computation of Measuremnt Jacobian matrix H and measurents covarience
      * ***/
@@ -954,13 +958,13 @@ void VoxelMapManager::mapSliding()
 {
   if((position_last_ - last_slide_position).norm() < config_setting_.sliding_thresh)
   {
-    std::cout<<RED<<"[DEBUG]: Last sliding length "<<(position_last_ - last_slide_position).norm()<<RESET<<"\n";
+    if (verbose_logging_) std::cout<<RED<<"[DEBUG]: Last sliding length "<<(position_last_ - last_slide_position).norm()<<RESET<<"\n";
     return;
   }
 
   //get global id now
   last_slide_position = position_last_;
-  double t_sliding_start = omp_get_wtime();
+  double t_sliding_start = verbose_logging_ ? omp_get_wtime() : 0.0;
   float loc_xyz[3];
   for (int j = 0; j < 3; j++)
   {
@@ -971,8 +975,11 @@ void VoxelMapManager::mapSliding()
   clearMemOutOfMap((int64_t)loc_xyz[0] + config_setting_.half_map_size, (int64_t)loc_xyz[0] - config_setting_.half_map_size,
                     (int64_t)loc_xyz[1] + config_setting_.half_map_size, (int64_t)loc_xyz[1] - config_setting_.half_map_size,
                     (int64_t)loc_xyz[2] + config_setting_.half_map_size, (int64_t)loc_xyz[2] - config_setting_.half_map_size);
-  double t_sliding_end = omp_get_wtime();
-  std::cout<<RED<<"[DEBUG]: Map sliding using "<<t_sliding_end - t_sliding_start<<" secs"<<RESET<<"\n";
+  if (verbose_logging_)
+  {
+    double t_sliding_end = omp_get_wtime();
+    std::cout<<RED<<"[DEBUG]: Map sliding using "<<t_sliding_end - t_sliding_start<<" secs"<<RESET<<"\n";
+  }
   return;
 }
 
@@ -990,11 +997,11 @@ void VoxelMapManager::clearMemOutOfMap(const int& x_max,const int& x_min,const i
       delete it->second;
       it = voxel_map_.erase(it);
       // delete_time += omp_get_wtime() - last_delete_time;
-      delete_voxel_cout++;
+      if (verbose_logging_) delete_voxel_cout++;
     } else {
       ++it;
     }
   }
-  std::cout<<RED<<"[DEBUG]: Delete "<<delete_voxel_cout<<" root voxels"<<RESET<<"\n";
+  if (verbose_logging_) std::cout<<RED<<"[DEBUG]: Delete "<<delete_voxel_cout<<" root voxels"<<RESET<<"\n";
   // std::cout<<RED<<"[DEBUG]: Delete "<<delete_voxel_cout<<" voxels using "<<delete_time<<" s"<<RESET<<"\n";
 }

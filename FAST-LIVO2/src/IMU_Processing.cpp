@@ -108,7 +108,10 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, in
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
-  RCLCPP_INFO(rclcpp::get_logger(""),"IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
+  if (verbose_logging_)
+  {
+    RCLCPP_INFO(rclcpp::get_logger(""),"IMU Initializing: %.1f %%", double(N) / MAX_INI_COUNT * 100);
+  }
   V3D cur_acc, cur_gyr;
 
   if (b_first_frame)

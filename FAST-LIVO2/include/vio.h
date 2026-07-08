@@ -118,6 +118,11 @@ public:
   double last_gen_map_ms_ = 0.0;
   double last_upd_map_ms_ = 0.0;
   double last_upd_ref_ms_ = 0.0;
+  double last_total_ms_ = 0.0;
+  int last_retrieved_points_ = 0;
+  int last_added_points_ = 0;
+  int last_updated_points_ = 0;
+  bool verbose_logging_ = false;
   // double ave_build_residual_time = 0;
   // double ave_ekf_time = 0;
 

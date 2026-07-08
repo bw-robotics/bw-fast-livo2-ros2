@@ -94,9 +94,8 @@ void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr
   pl_surf.clear();
   pl_corn.clear();
   pl_full.clear();
-  double t1 = omp_get_wtime();
   int plsize = msg->point_num;
-  printf("[ Preprocess ] Input point number: %d \n", plsize);
+  if (verbose_logging_) printf("[ Preprocess ] Input point number: %d \n", plsize);
   // printf("point_filter_num: %d\n", point_filter_num);
 
   pl_corn.reserve(plsize);
@@ -132,10 +131,7 @@ void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr
         }
       }
     }
-    static int count = 0;
-    static double time = 0.0;
-    count++;
-    double t0 = omp_get_wtime();
+    double feature_start = verbose_logging_ ? omp_get_wtime() : 0.0;
     for (int j = 0; j < N_SCANS; j++)
     {
       if (pl_buff[j].size() <= 5) continue;
@@ -157,8 +153,14 @@ void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr
       give_feature(pl, types);
       // pl_surf += pl;
     }
-    time += omp_get_wtime() - t0;
-    printf("Feature extraction time: %lf \n", time / count);
+    if (verbose_logging_)
+    {
+      static int count = 0;
+      static double time = 0.0;
+      count++;
+      time += omp_get_wtime() - feature_start;
+      printf("Feature extraction time: %lf \n", time / count);
+    }
   }
   else
   {
@@ -196,7 +198,7 @@ void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr
       }
     }
   }
-  printf("[ Preprocess ] Output point number: %zu \n", pl_surf.points.size());
+  if (verbose_logging_) printf("[ Preprocess ] Output point number: %zu \n", pl_surf.points.size());
 }
 
 void Preprocess::l515_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
@@ -234,7 +236,7 @@ void Preprocess::l515_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPt
     pl_surf.points.push_back(added_pt);
   }
 
-  cout << "pl size:: " << pl_orig.points.size() << endl;
+  if (verbose_logging_) cout << "pl size:: " << pl_orig.points.size() << endl;
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }

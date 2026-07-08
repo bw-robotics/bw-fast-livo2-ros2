@@ -141,6 +141,7 @@ public:
   void process(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
+  void setVerboseLogging(bool enabled) { verbose_logging_ = enabled; }
 
   // sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud;
   PointCloudXYZI pl_full, pl_corn, pl_surf;
@@ -150,6 +151,7 @@ public:
   
   double blind, blind_sqr;
   bool feature_enabled, given_offset_time;
+  bool verbose_logging_ = false;
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_full;
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_surf;
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_corn;

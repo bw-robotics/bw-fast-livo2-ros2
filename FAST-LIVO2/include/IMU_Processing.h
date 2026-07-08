@@ -47,6 +47,7 @@ public:
   void disable_gravity_est();
   void disable_bias_est();
   void disable_exposure_est();
+  void set_verbose_logging(bool enabled) { verbose_logging_ = enabled; }
   void Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, PointCloudXYZI::Ptr cur_pcl_un_);
   void UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out);
 
@@ -87,6 +88,7 @@ private:
   bool gravity_est_en = true;
   bool ba_bg_est_en = true;
   bool exposure_estimate_en = true;
+  bool verbose_logging_ = false;
 };
 typedef std::shared_ptr<ImuProcess> ImuProcessPtr;
 #endif

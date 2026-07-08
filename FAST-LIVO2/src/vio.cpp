@@ -297,7 +297,7 @@ void VIOManager::warpAffine(const Matrix2d &A_cur_ref, const cv::Mat &img_ref, c
   const Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
   if (isnan(A_ref_cur(0, 0)))
   {
-    printf("Affine warp is NaN, probably camera has no translation\n"); // TODO
+    if (verbose_logging_) printf("Affine warp is NaN, probably camera has no translation\n");
     return;
   }
 
@@ -779,7 +779,8 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // cout<<"C. addSubSparseMap: "<<t3-t2<<endl;
   // cout<<"depthcontinuous: C1 "<<t_2<<" C2 "<<t_3<<" C3 "<<t_4<<" C4
   // "<<t_5<<endl;
-  printf("[ VIO ] Retrieve %d points from visual sparse map\n", total_points);
+  last_retrieved_points_ = total_points;
+  if (verbose_logging_) printf("[ VIO ] Retrieve %d points from visual sparse map\n", total_points);
 }
 
 void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
@@ -804,6 +805,7 @@ void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
 
 void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 {
+  last_added_points_ = 0;
   if (pg.size() <= 10) return;
 
   // double t0 = omp_get_wtime();
@@ -900,7 +902,8 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 
   // double t_b2 = omp_get_wtime() - t0;
 
-  printf("[ VIO ] Append %d new visual map points\n", add);
+  last_added_points_ = add;
+  if (verbose_logging_) printf("[ VIO ] Append %d new visual map points\n", add);
   // printf("pg.size: %d \n", pg.size());
   // printf("B1. : %.6lf \n", t_b1);
   // printf("B2. : %.6lf \n", t_b2);
@@ -908,6 +911,7 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 
 void VIOManager::updateVisualMapPoints(cv::Mat img)
 {
+  last_updated_points_ = 0;
   if (total_points == 0) return;
 
   int update_num = 0;
@@ -964,7 +968,8 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
       pt->addFrameRef(ftr_new);
     }
   }
-  printf("[ VIO ] Update %d points in visual submap\n", update_num);
+  last_updated_points_ = update_num;
+  if (verbose_logging_) printf("[ VIO ] Update %d points in visual submap\n", update_num);
 }
 
 void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
@@ -1837,6 +1842,12 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
 
   frame_count++;
   ave_total = ave_total * (frame_count - 1) / frame_count + (t7 - t1 - (t5 - t4)) / frame_count;
+  last_retrieve_ms_     = (t2 - t1) * 1000.0;
+  last_jacobian_ekf_ms_ = (t3 - t2) * 1000.0;
+  last_gen_map_ms_      = (t4 - t3) * 1000.0;
+  last_upd_map_ms_      = (t6 - t5) * 1000.0;
+  last_upd_ref_ms_      = (t7 - t6) * 1000.0;
+  last_total_ms_        = (t7 - t1 - (t5 - t4)) * 1000.0;
 
   // printf("[ VIO ] feat_map.size(): %zu\n", feat_map.size());
   // printf("\033[1;32m[ VIO time ]: current frame: retrieveFromVisualSparseMap time: %.6lf secs.\033[0m\n", t2 - t1);
@@ -1852,31 +1863,27 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   // cout << BLUE << "ave_build_residual_time: " << ave_build_residual_time << RESET << endl;
   // cout << BLUE << "ave_ekf_time: " << ave_ekf_time << RESET << endl;
   
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;34m|                         VIO Time                            |\033[0m\n");
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;34m| %-29s | %-27zu |\033[0m\n", "Sparse Map Size", feat_map.size());
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage", "Time (secs)");
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "retrieveFromVisualSparseMap", t2 - t1);
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "computeJacobianAndUpdateEKF", t3 - t2);
-  printf("\033[1;32m| %-27s   | %-27lf |\033[0m\n", "-> computeJacobian", compute_jacobian_time);
-  printf("\033[1;32m| %-27s   | %-27lf |\033[0m\n", "-> updateEKF", update_ekf_time);
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "generateVisualMapPoints", t4 - t3);
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "updateVisualMapPoints", t6 - t5);
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "updateReferencePatch", t7 - t6);
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Current Total Time", t7 - t1 - (t5 - t4));
-  printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Average Total Time", ave_total);
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-#ifdef LIVO_BENCH_EN
-  last_retrieve_ms_     = (t2 - t1) * 1000.0;
-  last_jacobian_ekf_ms_ = (t3 - t2) * 1000.0;
-  last_gen_map_ms_      = (t4 - t3) * 1000.0;
-  last_upd_map_ms_      = (t6 - t5) * 1000.0;
-  last_upd_ref_ms_      = (t7 - t6) * 1000.0;
-#endif
+  if (verbose_logging_)
+  {
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+    printf("\033[1;34m|                         VIO Time                            |\033[0m\n");
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+    printf("\033[1;34m| %-29s | %-27zu |\033[0m\n", "Sparse Map Size", feat_map.size());
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+    printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage", "Time (secs)");
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "retrieveFromVisualSparseMap", t2 - t1);
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "computeJacobianAndUpdateEKF", t3 - t2);
+    printf("\033[1;32m| %-27s   | %-27lf |\033[0m\n", "-> computeJacobian", compute_jacobian_time);
+    printf("\033[1;32m| %-27s   | %-27lf |\033[0m\n", "-> updateEKF", update_ekf_time);
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "generateVisualMapPoints", t4 - t3);
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "updateVisualMapPoints", t6 - t5);
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "updateReferencePatch", t7 - t6);
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Current Total Time", t7 - t1 - (t5 - t4));
+    printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Average Total Time", ave_total);
+    printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+  }
   // std::string text = std::to_string(int(1 / (t7 - t1 - (t5 - t4)))) + " HZ";
   // cv::Point2f origin;
   // origin.x = 20;

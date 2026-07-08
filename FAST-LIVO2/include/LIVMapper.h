@@ -69,6 +69,7 @@ public:
   void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath);
   void readParameters(rclcpp::Node::SharedPtr &node);
   void publishStaticTransform();
+  void logHealthSummary(const char *mode, double total_ms, double primary_ms, double secondary_ms);
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
   template <typename T> Eigen::Matrix<T, 3, 1> pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi);
@@ -81,7 +82,7 @@ public:
   std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> voxel_map;
   
   string root_dir;
-  string lid_topic, imu_topic, seq_name, img_topic;
+  string lid_topic, imu_topic, seq_name, img_topic, odom_topic, path_topic;
   V3D extT;
   M3D extR;
 
@@ -137,6 +138,9 @@ public:
   int image_qos_depth_ = 200000;                     // ROS subscription queue depth for images
   std::string image_qos_reliability_ = "reliable";   // "reliable" | "best_effort"
   bool odometry_only_ = false;
+  bool verbose_logging_ = false;
+  double health_log_interval_sec_ = 10.0;
+  double last_health_log_wall_time_ = 0.0;
   deque<PointCloudXYZI::Ptr> lid_raw_data_buffer;
   deque<double> lid_header_time_buffer;
   deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer;
