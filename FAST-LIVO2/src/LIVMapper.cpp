@@ -11,7 +11,6 @@ which is included as part of this source code package.
 */
 
 #include "LIVMapper.h"
-#include <vikit/camera_loader.h>
 
 using namespace Sophus;
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr &node, std::string node_name, const rclcpp::NodeOptions & options)
@@ -73,6 +72,7 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   try_declare.template operator()<int>("common.img_en", 1);
   try_declare.template operator()<int>("common.lidar_en", 1);
   try_declare.template operator()<std::string>("common.img_topic", "/left_camera/image");
+  try_declare.template operator()<std::string>("common.cam_info_topic", "/cam/FRONT/camera_info");
   try_declare.template operator()<double>("common.img_min_interval_sec", 0.033);
   try_declare.template operator()<int>("common.img_buffer_max_size", 2);
   try_declare.template operator()<int>("common.lidar_buffer_max_size", 0);
@@ -143,6 +143,7 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("common.img_en", img_en);
   this->node->get_parameter("common.lidar_en", lidar_en);
   this->node->get_parameter("common.img_topic", img_topic);
+  this->node->get_parameter("common.cam_info_topic", cam_info_topic_);
   this->node->get_parameter("common.img_min_interval_sec", img_min_interval_);
   this->node->get_parameter("common.img_buffer_max_size", img_buffer_max_size_);
   this->node->get_parameter("common.lidar_buffer_max_size", lidar_buffer_max_size_);
@@ -215,6 +216,34 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 }
 
+bool LIVMapper::buildCameraFromInfo(const sensor_msgs::msg::CameraInfo & info, vk::AbstractCamera *& cam)
+{
+  const double fx = info.k[0], fy = info.k[4], cx = info.k[2], cy = info.k[5];
+  const auto & d = info.d;
+
+  if (info.distortion_model == "equidistant")
+  {
+    cam = new vk::EquidistantCamera(
+      info.width, info.height, /*scale=*/1.0, fx, fy, cx, cy,
+      d.size() > 0 ? d[0] : 0.0,
+      d.size() > 1 ? d[1] : 0.0,
+      d.size() > 2 ? d[2] : 0.0,
+      d.size() > 3 ? d[3] : 0.0);
+    return true;
+  }
+  if (info.distortion_model == "plumb_bob" || info.distortion_model == "rational_polynomial")
+  {
+    cam = new vk::PinholeCamera(
+      info.width, info.height, /*scale=*/1.0, fx, fy, cx, cy,
+      d.size() > 0 ? d[0] : 0.0,
+      d.size() > 1 ? d[1] : 0.0,
+      d.size() > 2 ? d[2] : 0.0,
+      d.size() > 3 ? d[3] : 0.0);
+    return true;
+  }
+  return false;
+}
+
 void LIVMapper::initializeComponents(rclcpp::Node::SharedPtr &node) 
 {
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
@@ -230,28 +259,42 @@ void LIVMapper::initializeComponents(rclcpp::Node::SharedPtr &node)
   voxelmap_manager->extT_ << VEC_FROM_ARRAY(extrinT);
   voxelmap_manager->extR_ << MAT_FROM_ARRAY(extrinR);
 
-  if (!vk::camera_loader::loadFromRosNs(this->node, "camera", vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
+  if (img_en)
+  {
+    sensor_msgs::msg::CameraInfo info;
+    while (rclcpp::ok())
+    {
+      if (rclcpp::wait_for_message(info, this->node, cam_info_topic_,
+            std::chrono::seconds(3), rclcpp::SensorDataQoS()))
+        break;
+      RCLCPP_WARN(this->node->get_logger(),
+        "Waiting for camera intrinsics on '%s' ...", cam_info_topic_.c_str());
+    }
 
-  vio_manager->grid_size = grid_size;
-  vio_manager->patch_size = patch_size;
-  vio_manager->outlier_threshold = outlier_threshold;
-  vio_manager->setImuToLidarExtrinsic(extT, extR);
-  vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
-  vio_manager->state = &_state;
-  vio_manager->state_propagat = &state_propagat;
-  vio_manager->max_iterations = max_iterations;
-  vio_manager->img_point_cov = IMG_POINT_COV;
-  vio_manager->normal_en = normal_en;
-  vio_manager->inverse_composition_en = inverse_composition_en;
-  vio_manager->raycast_en = raycast_en;
-  vio_manager->grid_n_width = grid_n_width;
-  vio_manager->grid_n_height = grid_n_height;
-  vio_manager->patch_pyrimid_level = patch_pyrimid_level;
-  vio_manager->exposure_estimate_en = exposure_estimate_en;
-  vio_manager->colmap_output_en = colmap_output_en;
-  vio_manager->odometry_only = odometry_only_;
-  vio_manager->verbose_logging_ = verbose_logging_;
-  vio_manager->initializeVIO();
+    if (!buildCameraFromInfo(info, vio_manager->cam))
+      throw std::runtime_error("Unsupported camera distortion_model: '" + info.distortion_model + "'");
+
+    vio_manager->grid_size = grid_size;
+    vio_manager->patch_size = patch_size;
+    vio_manager->outlier_threshold = outlier_threshold;
+    vio_manager->setImuToLidarExtrinsic(extT, extR);
+    vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
+    vio_manager->state = &_state;
+    vio_manager->state_propagat = &state_propagat;
+    vio_manager->max_iterations = max_iterations;
+    vio_manager->img_point_cov = IMG_POINT_COV;
+    vio_manager->normal_en = normal_en;
+    vio_manager->inverse_composition_en = inverse_composition_en;
+    vio_manager->raycast_en = raycast_en;
+    vio_manager->grid_n_width = grid_n_width;
+    vio_manager->grid_n_height = grid_n_height;
+    vio_manager->patch_pyrimid_level = patch_pyrimid_level;
+    vio_manager->exposure_estimate_en = exposure_estimate_en;
+    vio_manager->colmap_output_en = colmap_output_en;
+    vio_manager->odometry_only = odometry_only_;
+    vio_manager->verbose_logging_ = verbose_logging_;
+    vio_manager->initializeVIO();
+  }
 
   p_imu->set_extrinsic(extT, extR);
   p_imu->set_gyr_cov_scale(V3D(gyr_cov, gyr_cov, gyr_cov));

@@ -30,7 +30,10 @@ which is included as part of this source code package.
 #include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
-#include <vikit/camera_loader.h>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <rclcpp/wait_for_message.hpp>
+#include <vikit/equidistant_camera.h>
+#include <vikit/pinhole_camera.h>
 
 class LIVMapper
 {
@@ -69,6 +72,7 @@ public:
   void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath);
   void readParameters(rclcpp::Node::SharedPtr &node);
   void publishStaticTransform();
+  bool buildCameraFromInfo(const sensor_msgs::msg::CameraInfo & info, vk::AbstractCamera *& cam);
   void logHealthSummary(const char *mode, double total_ms, double primary_ms, double secondary_ms);
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
@@ -82,7 +86,7 @@ public:
   std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> voxel_map;
   
   string root_dir;
-  string lid_topic, imu_topic, seq_name, img_topic, odom_topic, path_topic;
+  string lid_topic, imu_topic, seq_name, img_topic, cam_info_topic_, odom_topic, path_topic;
   V3D extT;
   M3D extR;
 
