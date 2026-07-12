@@ -24,22 +24,27 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 # Detect CPU architecture
 message(STATUS "Current CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 
-# Specific settings for Release build
+# Specific settings for Release build.
+# Avoid -mcpu/-march=native so packages built on one host remain runnable on
+# fleet targets (e.g. Cortex-A78AE). Override with -DFAST_LIVO_MCPU=... if needed.
+if(NOT DEFINED FAST_LIVO_MCPU)
+  set(FAST_LIVO_MCPU "cortex-a78")
+endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|aarch64|ARM|AARCH64)")
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-    # 64-bit ARM optimizations (e.g., RK3588 and Jetson Orin NX)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mcpu=native -mtune=native -ffast-math")
-    message(STATUS "Using 64-bit ARM optimizations: -O3 -mcpu=native -mtune=native -ffast-math")
+    # 64-bit ARM baseline for Orin / Cortex-A78AE fleet boards
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mcpu=${FAST_LIVO_MCPU} -ffast-math")
+    message(STATUS "Using 64-bit ARM optimizations: -O3 -mcpu=${FAST_LIVO_MCPU} -ffast-math")
   else()
     # 32-bit ARM optimizations with NEON support
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mcpu=native -mtune=native -mfpu=neon -ffast-math")
-    message(STATUS "Using 32-bit ARM optimizations: -O3 -mcpu=native -mtune=native -mfpu=neon -ffast-math")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -mcpu=${FAST_LIVO_MCPU} -mfpu=neon -ffast-math")
+    message(STATUS "Using 32-bit ARM optimizations: -O3 -mcpu=${FAST_LIVO_MCPU} -mfpu=neon -ffast-math")
   endif()
   add_definitions(-DARM_ARCH)
 else()
-  # x86-64 (Intel/AMD) optimizations
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native -funroll-loops") #-flto
-  message(STATUS "Using general x86 optimizations: -O3 -march=native -mtune=native -funroll-loops") 
+  # Portable x86-64 baseline (no host-native ISA)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=x86-64-v2 -mtune=generic -funroll-loops")
+  message(STATUS "Using general x86 optimizations: -O3 -march=x86-64-v2 -mtune=generic -funroll-loops")
   add_definitions(-DX86_ARCH)
 endif()
 
