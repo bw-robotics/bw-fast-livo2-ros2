@@ -148,7 +148,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, in
   }
   IMU_mean_acc_norm = mean_acc.norm();
   state_inout.gravity = -mean_acc / mean_acc.norm() * G_m_s2;
-  state_inout.rot_end = Eye3d; // Exp(mean_acc.cross(V3D(0, 0, -1 / scale_gravity)));
+  state_inout.rot_end = Eye3d; // ..this is the rotation of the IMU frame to the global frame
   state_inout.bias_g = Zero3d; // mean_gyr;
 
   last_imu = meas.imu.back();
